@@ -15,6 +15,7 @@ public class Rigid_Bunny : MonoBehaviour
 	float linear_decay	= 0.999f;				// for velocity decay
 	float angular_decay	= 0.98f;
 	float restitution 	= 0.3f;					// for collision
+	float restitution_t 	= 0.3f;					// for collision
 
   Vector3 gravity_a = new Vector3(0, -9.8F, 0);
 
@@ -101,11 +102,11 @@ public class Rigid_Bunny : MonoBehaviour
   }
 
   // In this function, update v and w by the impulse due to the collision with
-	//a plane <P, N>
-	void Collision_Impulse(Vector3 P, Vector3 N)
-	{
-		Mesh mesh = GetComponent<MeshFilter>().mesh;
-		Vector3[] vertices = mesh.vertices;
+  //a plane <P, N>
+  void Collision_Impulse(Vector3 P, Vector3 N)
+  {
+    Mesh mesh = GetComponent<MeshFilter>().mesh;
+    Vector3[] vertices = mesh.vertices;
 
     Matrix4x4 R = Matrix4x4.Rotate(transform.rotation);
 
@@ -127,7 +128,6 @@ public class Rigid_Bunny : MonoBehaviour
       normal_v += collide_vertices[i];
     }
     normal_v /= collide_vertices.Count;
-    Debug.Log("Get normal vertex: " + normal_v);
 
     Vector3 Rxr_i = R.MultiplyPoint3x4(normal_v);
     Vector3 sumv = v + Vector3.Cross(w, Rxr_i);
@@ -136,11 +136,13 @@ public class Rigid_Bunny : MonoBehaviour
       Vector3 v_n = N * Vector3.Dot(sumv, N);
       Vector3 v_t = sumv - v_n;
       float a = Mathf.Max(
-          1 - 0.5F * (1 + restitution) * v_n.magnitude / v_t.magnitude,
+          1 - restitution_t	* (1 + restitution) * v_n.magnitude / v_t.magnitude,
           0);
       v_n = -v_n * restitution;
       v_t = v_t * a;
+      // Debug.Log("Vn: " + v_n.ToString("F4") + " Vt: " + v_t.ToString("F4"));
       Vector3 sum_v_new = v_n + v_t;
+      if (sum_v_new.magnitude < 0.1F) { return; }
 
       Matrix4x4 I = R * I_ref * R.transpose;
       Matrix4x4 Rri_cross_mat = Get_Cross_Matrix(Rxr_i);
@@ -157,7 +159,7 @@ public class Rigid_Bunny : MonoBehaviour
       v += j / mass;
       Vector3 add_w = I.inverse * (Rri_cross_mat.MultiplyPoint3x4(j));
       w += add_w;
-      Debug.Log("The : Collision " + v + " w: " + w);
+      // Debug.Log("The : Collision " + v + " w: " + w);
     }
   }
 
@@ -174,8 +176,8 @@ public class Rigid_Bunny : MonoBehaviour
 		}
 		if(Input.GetKey("l"))
 		{
-			v = new Vector3 (1, 2, 0);
-      w = new Vector3 (3, 0, 3);
+			v = new Vector3 (5, 2, 0);
+      w = new Vector3 (2, 0, 1);
 			launched=true;
 		}
 
@@ -188,11 +190,22 @@ public class Rigid_Bunny : MonoBehaviour
 
       // Calculate w
       w *= angular_decay;
+
+      if ((v.magnitude) > 0.1F)
+      {
+        restitution = 0.5F;
+        restitution_t	 = 0.5F;
+      }
+      else
+      {
+        restitution = 0.05F;
+        restitution_t	 = 1.0F;
+      }
     }
 
 		// Part II: Collision Impulse
 		Collision_Impulse(new Vector3(0, 0.01f, 0), new Vector3(0, 1, 0));
-		// Collision_Impulse(new Vector3(2, 0, 0), new Vector3(-1, 0, 0));
+		Collision_Impulse(new Vector3(2, 0, 0), new Vector3(-1, 0, 0));
 
 		// Part III: Update position & orientation
 		//Update linear status
@@ -200,14 +213,14 @@ public class Rigid_Bunny : MonoBehaviour
 		//Update angular status
 		Quaternion q = transform.rotation;
 
-    if (launched) {
+    if (launched)
+    {
       x += v * dt;
 
       Vector3 wdt = w * dt * 0.5F;
       Quaternion omega_q = new Quaternion(wdt.x, wdt.y, wdt.z, 0);
       Quaternion dq = omega_q * q;
       q = Quaternion_Add(q,dq).normalized;
-      // Debug.Log("w: " + w + " q: " + q);
     }
 
 		// Part IV: Assign to the object
