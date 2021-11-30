@@ -10,10 +10,11 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
 	Vector3[] V;
 	Matrix4x4 QQt = Matrix4x4.zero;
 
+  Vector3 gravity = new Vector3(0, -9.8F, 0);
 
-    // Start is called before the first frame update
-    void Start()
-    {
+  // Start is called before the first frame update
+  void Start()
+  {
     	Mesh mesh = GetComponent<MeshFilter>().mesh;
         V = new Vector3[mesh.vertices.Length];
         X = mesh.vertices;
@@ -58,26 +59,26 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
 	    for(int jj=0; jj<3; jj++)
 	    for(int kk=0; kk<3; kk++)
 	        C[ii,jj]+=F[kk,ii]*F[kk,jj];
-	   
+
 	   	Matrix4x4 C2 = Matrix4x4.zero;
 		for(int ii=0; ii<3; ii++)
 	    for(int jj=0; jj<3; jj++)
 	    for(int kk=0; kk<3; kk++)
 	        C2[ii,jj]+=C[ii,kk]*C[jj,kk];
-	    
+
 	    float det    =  F[0,0]*F[1,1]*F[2,2]+
 	                    F[0,1]*F[1,2]*F[2,0]+
 	                    F[1,0]*F[2,1]*F[0,2]-
 	                    F[0,2]*F[1,1]*F[2,0]-
 	                    F[0,1]*F[1,0]*F[2,2]-
 	                    F[0,0]*F[1,2]*F[2,1];
-	    
+
 	    float I_c    =   C[0,0]+C[1,1]+C[2,2];
 	    float I_c2   =   I_c*I_c;
 	    float II_c   =   0.5f*(I_c2-C2[0,0]-C2[1,1]-C2[2,2]);
 	    float III_c  =   det*det;
 	    float k      =   I_c2-3*II_c;
-	    
+
 	    Matrix4x4 inv_U = Matrix4x4.zero;
 	    if(k<1e-10f)
 	    {
@@ -96,39 +97,39 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
 	        float phi = Mathf.Acos(value);
 	        float lambda2=(I_c+2*k_root*Mathf.Cos(phi/3))/3.0f;
 	        float lambda=Mathf.Sqrt(lambda2);
-	        
+
 	        float III_u = Mathf.Sqrt(III_c);
 	        if(det<0)   III_u=-III_u;
 	        float I_u = lambda + Mathf.Sqrt(-lambda2 + I_c + 2*III_u/lambda);
 	        float II_u=(I_u*I_u-I_c)*0.5f;
-	        
-	        
+
+
 	        float inv_rate, factor;
 	        inv_rate=1/(I_u*II_u-III_u);
 	        factor=I_u*III_u*inv_rate;
-	        
+
 	       	Matrix4x4 U = Matrix4x4.zero;
 			U[0,0]=factor;
 	        U[1,1]=factor;
 	        U[2,2]=factor;
-	        
+
 	        factor=(I_u*I_u-II_u)*inv_rate;
 	        for(int i=0; i<3; i++)
 	        for(int j=0; j<3; j++)
 	            U[i,j]+=factor*C[i,j]-inv_rate*C2[i,j];
-	        
+
 	        inv_rate=1/III_u;
 	        factor=II_u*inv_rate;
 	        inv_U[0,0]=factor;
 	        inv_U[1,1]=factor;
 	        inv_U[2,2]=factor;
-	        
+
 	        factor=-I_u*inv_rate;
 	        for(int i=0; i<3; i++)
 	        for(int j=0; j<3; j++)
 	            inv_U[i,j]+=factor*U[i,j]+inv_rate*C[i,j];
 	    }
-	    
+
 	    Matrix4x4 R=Matrix4x4.zero;
 	    for(int ii=0; ii<3; ii++)
 	    for(int jj=0; jj<3; jj++)
@@ -148,34 +149,64 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
 
 			V[i]+=(x-X[i])*inv_dt;
 			X[i]=x;
-		}	
+		}
 		Mesh mesh = GetComponent<MeshFilter>().mesh;
-		mesh.vertices=X;
-   	}
-
-	void Collision(float inv_dt)
-	{
-	}
-
-    // Update is called once per frame
-    void Update()
-    {
-  		float dt = 0.015f;
-
-  		//Step 1: run a simple particle system.
-        for(int i=0; i<V.Length; i++)
-        {
-        }
-
-        //Step 2: Perform simple particle collision.
-		Collision(1/dt);
-
-		// Step 3: Use shape matching to get new translation c and 
-		// new rotation R. Update the mesh by c and R.
-        //Shape Matching (translation)
-		
-		//Shape Matching (rotation)
-		
-		//Update_Mesh(c, R, 1/dt);
+    mesh.vertices=X;
     }
+
+  void Collision(float inv_dt)
+  {
+  }
+
+  Matrix4x4 GetMatrixA(Vector3 c)
+  {
+    Matrix4x4 m1 = Matrix4x4.zero;
+    for (int i = 0; i < X.Length; ++i)
+    {
+      m1[0, 0] += (X[i] - c)[0] * Q[i][0];
+      m1[1, 0] += (X[i] - c)[1] * Q[i][0];
+      m1[2, 0] += (X[i] - c)[2] * Q[i][0];
+      m1[0, 1] += (X[i] - c)[0] * Q[i][1];
+      m1[1, 1] += (X[i] - c)[1] * Q[i][1];
+      m1[2, 1] += (X[i] - c)[2] * Q[i][1];
+      m1[0, 2] += (X[i] - c)[0] * Q[i][2];
+      m1[1, 2] += (X[i] - c)[1] * Q[i][2];
+      m1[2, 2] += (X[i] - c)[2] * Q[i][2];
+    }
+    m1[3, 3] = 1;
+
+    return m1 * (QQt.inverse);
+  }
+
+  // Update is called once per frame
+  void Update()
+  {
+    float dt = 0.015f;
+
+    //Step 1: run a simple particle system.
+    for(int i=0; i<V.Length; i++)
+    {
+      V[i] += gravity * dt;
+      X[i] += V[i] * dt;
+    }
+
+    //Step 2: Perform simple particle collision.
+    Collision(1/dt);
+
+    // Step 3: Use shape matching to get new translation c and
+    // new rotation R. Update the mesh by c and R.
+    //Shape Matching (translation)
+    Vector3 c = Vector3.zero;
+    for (int i = 0; i < X.Length; ++i)
+    {
+      c += X[i];
+    }
+    c /= X.Length;
+
+    //Shape Matching (rotation)
+    Matrix4x4 A = GetMatrixA(c);
+    Matrix4x4 R = Get_Rotation(A);
+
+    Update_Mesh(c, R, 1/dt);
+  }
 }
