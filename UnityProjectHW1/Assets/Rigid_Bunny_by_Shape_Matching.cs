@@ -11,6 +11,7 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
 	Matrix4x4 QQt = Matrix4x4.zero;
 
   Vector3 gravity = new Vector3(0, -9.8F, 0);
+	float linear_decay	= 0.99f;				// for velocity decay
 
   // Start is called before the first frame update
   void Start()
@@ -154,8 +155,17 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
     mesh.vertices=X;
     }
 
-  void Collision(float inv_dt)
+  void Collision(float inv_dt, Vector3 p, Vector3 n)
   {
+    for (int i = 0; i < X.Length; ++i)
+    {
+      if (Vector3.Dot(X[i] - p, n) < 0)
+      {
+        Vector3 x_new = X[i] + n * Mathf.Abs(Vector3.Dot(X[i] - p, n));
+        V[i] += (x_new - X[i]) * inv_dt;
+        X[i] = x_new;
+      }
+    }
   }
 
   Matrix4x4 GetMatrixA(Vector3 c)
@@ -187,11 +197,13 @@ public class Rigid_Bunny_by_Shape_Matching : MonoBehaviour
     for(int i=0; i<V.Length; i++)
     {
       V[i] += gravity * dt;
+      V[i] *= linear_decay;
       X[i] += V[i] * dt;
     }
 
     //Step 2: Perform simple particle collision.
-    Collision(1/dt);
+    Collision(1 / dt, new Vector3(0, 0.01f, 0), new Vector3(0, 1, 0));
+    Collision(1 / dt, new Vector3(1.99F, 0, 0), new Vector3(-1, 0, 0));
 
     // Step 3: Use shape matching to get new translation c and
     // new rotation R. Update the mesh by c and R.
