@@ -4,16 +4,17 @@ using UnityEngine;
 
 public class implicit_model : MonoBehaviour
 {
-	float 		t 		= 0.0333f;
-	float 		mass	= 1;
-	float		damping	= 0.99f;
-	float 		rho		= 0.995f;
-	float 		spring_k = 8000;
-	int[] 		E;
-	float[] 	L;
-	Vector3[] 	V;
+  float 		t 		= 0.0333f;
+  float 		mass	= 1;
+  float		damping	= 0.99f;
+  float 		rho		= 0.995f;
+  float 		spring_k = 8000;
+  int[] 		E;
+  float[] 	L;
+  Vector3[] 	V;
 
   Vector3 kGravity = new Vector3(0, -9.8F, 0);
+  float kEpsilon = 1e-2F;
 
     // Start is called before the first frame update
     void Start()
@@ -137,12 +138,12 @@ public class implicit_model : MonoBehaviour
 		Mesh mesh = GetComponent<MeshFilter> ().mesh;
 		Vector3[] X = mesh.vertices;
 
-		//Handle colllision.
+		// Handle colllision.
 
 		mesh.vertices = X;
 	}
 
-  void Get_Gradient(Vector3[] X, Vector3[] X_hat, float t, Vector3[] G)
+  void Get_Gradient(Vector3[] X, Vector3[] X_hat, float t, ref Vector3[] G)
   {
     // Momentum and Gravity.
     //
@@ -174,23 +175,42 @@ public class implicit_model : MonoBehaviour
 		Vector3[] G 		= new Vector3[X.Length];
 
     // Initial Setup.
-    for (int i = 0; i < V.Length; i++) V[i] *= damping;
-    for (int i = 0; i < X_hat.Length; ++i) X_hat[i] = X[i] + V[i] * t;
-    X = X_hat;
+    for (int i = 0; i < V.Length; i++)  V[i] *= damping;
+    for (int i = 0; i < X_hat.Length; ++i)
+    {
+      X_hat[i] = X[i] + V[i] * t;
+      // initial X just guess it!
+      // can't just assign array
+      X[i] = X_hat[i];
+    }
 
+    float omega = 1;
     for(int k=0; k<32; k++)
     {
-      Get_Gradient(X, X_hat, t, G);
+      Get_Gradient(X, X_hat, t, ref G);
+
+      // update omega
+      if (k == 0) omega = 1;
+      else if (k == 1) omega = 2.0F / (2.0F - rho * rho);
+      else omega = 4.0F / (4.0F - rho * rho * omega);
 
       // Update X by gradient.
+      float res = 0;
       for (int i = 0; i < X.Length; ++i)
       {
+        // Skip two fixed vertex
         if (i == 0 || i == 20) continue;
+
+        Vector3 old_X = X[i];
         X[i] -= G[i] / (1.0F / t / t + spring_k * 4.0F);
+        // Chebyshev Acceleration
+        X[i] = X[i] * omega + last_X[i] * (1.0F - omega);
+        last_X[i] = old_X;
       }
     }
 
-    //Finishing.
+    // Finishing.
+    for (int i = 0; i < V.Length; ++i)  V[i] += ( (X[i] - X_hat[i]) / t);
 
     mesh.vertices = X;
 
