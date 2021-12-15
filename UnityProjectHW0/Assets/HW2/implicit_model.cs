@@ -137,8 +137,20 @@ public class implicit_model : MonoBehaviour
 	{
 		Mesh mesh = GetComponent<MeshFilter> ().mesh;
 		Vector3[] X = mesh.vertices;
+    GameObject sphere = GameObject.Find("Sphere");
 
 		// Handle colllision.
+    Vector3 c = sphere.transform.position;
+    float r = 2.7F;
+    for (int i = 0; i < X.Length; ++i)
+    {
+      float dist = (X[i] - c).magnitude - 2.7F;
+      if (dist < 0)
+      {
+        V[i] += (c + (X[i] - c).normalized * r - X[i]) / t;
+        X[i] = c + (X[i] - c).normalized * r;
+      }
+    }
 
 		mesh.vertices = X;
 	}
@@ -182,6 +194,7 @@ public class implicit_model : MonoBehaviour
       // initial X just guess it!
       // can't just assign array
       X[i] = X_hat[i];
+      last_X[i] = X[i];
     }
 
     float omega = 1;
@@ -195,7 +208,6 @@ public class implicit_model : MonoBehaviour
       else omega = 4.0F / (4.0F - rho * rho * omega);
 
       // Update X by gradient.
-      float res = 0;
       for (int i = 0; i < X.Length; ++i)
       {
         // Skip two fixed vertex
@@ -205,6 +217,9 @@ public class implicit_model : MonoBehaviour
         X[i] -= G[i] / (1.0F / t / t + spring_k * 4.0F);
         // Chebyshev Acceleration
         X[i] = X[i] * omega + last_X[i] * (1.0F - omega);
+        /*
+          Debug.Log("new X " + X[i].ToString("F5"));
+        */
         last_X[i] = old_X;
       }
     }
