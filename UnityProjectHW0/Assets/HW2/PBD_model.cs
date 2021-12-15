@@ -9,9 +9,10 @@ public class PBD_model: MonoBehaviour {
 	float[] 	L;
 	Vector3[] 	V;
 
+  Vector3 kGravity = new Vector3(0, -9.8F, 0);
 
 	// Use this for initialization
-	void Start () 
+	void Start ()
 	{
 		Mesh mesh = GetComponent<MeshFilter> ().mesh;
 
@@ -28,7 +29,7 @@ public class PBD_model: MonoBehaviour {
 		}
 		int t=0;
 		for(int j=0; j<n-1; j++)
-		for(int i=0; i<n-1; i++)	
+		for(int i=0; i<n-1; i++)
 		{
 			T[t*6+0]=j*n+i;
 			T[t*6+1]=j*n+i+1;
@@ -45,7 +46,7 @@ public class PBD_model: MonoBehaviour {
 
 		//Construct the original edge list
 		int[] _E = new int[T.Length*2];
-		for (int i=0; i<T.Length; i+=3) 
+		for (int i=0; i<T.Length; i+=3)
 		{
 			_E[i*2+0]=T[i+0];
 			_E[i*2+1]=T[i+1];
@@ -56,19 +57,19 @@ public class PBD_model: MonoBehaviour {
 		}
 		//Reorder the original edge list
 		for (int i=0; i<_E.Length; i+=2)
-			if(_E[i] > _E[i + 1]) 
+			if(_E[i] > _E[i + 1])
 				Swap(ref _E[i], ref _E[i+1]);
 		//Sort the original edge list using quicksort
 		Quick_Sort (ref _E, 0, _E.Length/2-1);
 
 		int e_number = 0;
 		for (int i=0; i<_E.Length; i+=2)
-			if (i == 0 || _E [i + 0] != _E [i - 2] || _E [i + 1] != _E [i - 1]) 
+			if (i == 0 || _E [i + 0] != _E [i - 2] || _E [i + 1] != _E [i - 1])
 				e_number++;
 
 		E = new int[e_number * 2];
 		for (int i=0, e=0; i<_E.Length; i+=2)
-			if (i == 0 || _E [i + 0] != _E [i - 2] || _E [i + 1] != _E [i - 1]) 
+			if (i == 0 || _E [i + 0] != _E [i - 2] || _E [i + 1] != _E [i - 1])
 			{
 				E[e*2+0]=_E [i + 0];
 				E[e*2+1]=_E [i + 1];
@@ -76,7 +77,7 @@ public class PBD_model: MonoBehaviour {
 			}
 
 		L = new float[E.Length/2];
-		for (int e=0; e<E.Length/2; e++) 
+		for (int e=0; e<E.Length/2; e++)
 		{
 			int i = E[e*2+0];
 			int j = E[e*2+1];
@@ -106,7 +107,7 @@ public class PBD_model: MonoBehaviour {
 		pivot_1 = a [l * 2 + 1];
 		i = l;
 		j = r + 1;
-		while (true) 
+		while (true)
 		{
 			do ++i; while( i<=r && (a[i*2]<pivot_0 || a[i*2]==pivot_0 && a[i*2+1]<=pivot_1));
 			do --j; while(  a[j*2]>pivot_0 || a[j*2]==pivot_0 && a[j*2+1]> pivot_1);
@@ -126,48 +127,81 @@ public class PBD_model: MonoBehaviour {
 		b = temp;
 	}
 
-	void Strain_Limiting()
-	{
-		Mesh mesh = GetComponent<MeshFilter> ().mesh;
-		Vector3[] vertices = mesh.vertices;
+  void Strain_Limiting()
+  {
+    Mesh mesh = GetComponent<MeshFilter> ().mesh;
+    Vector3[] vertices = mesh.vertices;
 
-		//Apply PBD here.
-		//...
-		mesh.vertices = vertices;
-	}
+    // Apply PBD here.
+    // Prepare
+    Vector3[] sum_x = new Vector3[vertices.Length];
+    float[] sum_n = new float[vertices.Length];
+    for (int i = 0; i < vertices.Length; ++i)
+    {
+      sum_x[i] = Vector3.zero;
+      sum_n[i] = 0;
+    }
+
+    // Projection
+    for (int e = 0; e < E.Length / 2; ++e)
+    {
+      int i = E[e * 2];
+      int j = E[e * 2 + 1];
+
+      sum_x[i] += 0.5F * (vertices[i] + vertices[j] +
+          L[e] * (vertices[i] - vertices[j]).normalized);
+      sum_x[j] += 0.5F * (vertices[i] + vertices[j] -
+          L[e] * (vertices[i] - vertices[j]).normalized);
+      sum_n[i]++;
+      sum_n[j]++;
+    }
+
+    for (int i = 0; i < vertices.Length; ++i)
+    {
+      if (i == 0 || i == 20) continue;
+      Vector3 x_new = (vertices[i] * 0.2F + sum_x[i]) / (0.2F + sum_n[i]);
+      V[i] += (x_new - vertices[i]) / t;
+      vertices[i] = x_new;
+    }
+
+    mesh.vertices = vertices;
+  }
 
 	void Collision_Handling()
 	{
 		Mesh mesh = GetComponent<MeshFilter> ().mesh;
 		Vector3[] X = mesh.vertices;
-		
+
 		//For every vertex, detect collision and apply impulse if needed.
 		//...
 		mesh.vertices = X;
 	}
 
 	// Update is called once per frame
-	void Update () 
-	{
-		Mesh mesh = GetComponent<MeshFilter> ().mesh;
-		Vector3[] X = mesh.vertices;
+  void Update ()
+  {
+    Mesh mesh = GetComponent<MeshFilter> ().mesh;
+    Vector3[] X = mesh.vertices;
 
-		for(int i=0; i<X.Length; i++)
-		{
-			if(i==0 || i==20)	continue;
-			//Initial Setup
-			//...
-		}
-		mesh.vertices = X;
+    for(int i=0; i<X.Length; i++)
+    {
+      if(i==0 || i==20)	continue;
+      // Initial Setup
+      V[i] *= damping;
+      V[i] += kGravity;
 
-		for(int l=0; l<32; l++)
-			Strain_Limiting ();
+      X[i] += V[i] * t;
+    }
+    mesh.vertices = X;
 
-		Collision_Handling ();
+    for(int l=0; l<320; l++)
+      Strain_Limiting ();
 
-		mesh.RecalculateNormals ();
+    Collision_Handling ();
 
-	}
+    mesh.RecalculateNormals ();
+
+  }
 
 
 }

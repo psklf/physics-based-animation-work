@@ -7,14 +7,13 @@ public class implicit_model : MonoBehaviour
   float 		t 		= 0.0333f;
   float 		mass	= 1;
   float		damping	= 0.99f;
-  float 		rho		= 0.995f;
+  float 		rho		= 0.9f;
   float 		spring_k = 8000;
   int[] 		E;
   float[] 	L;
   Vector3[] 	V;
 
   Vector3 kGravity = new Vector3(0, -9.8F, 0);
-  float kEpsilon = 1e-2F;
 
     // Start is called before the first frame update
     void Start()
