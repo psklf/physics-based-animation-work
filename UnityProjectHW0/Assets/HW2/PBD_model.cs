@@ -3,13 +3,14 @@ using System.Collections;
 
 public class PBD_model: MonoBehaviour {
 
-	float 		t= 0.0333f;
-	float		damping= 0.99f;
-	int[] 		E;
-	float[] 	L;
-	Vector3[] 	V;
+  float   t = 0.0333f;
+  float   damping = 0.99f;
+  int[] 		E;
+  float[] 	L;
+  Vector3[] 	V;
 
-  Vector3 kGravity = new Vector3(0, -9.8F, 0);
+  // Not physical
+  Vector3 kGravity = new Vector3(0, -0.5F, 0);
 
 	// Use this for initialization
 	void Start ()
@@ -152,8 +153,8 @@ public class PBD_model: MonoBehaviour {
           L[e] * (vertices[i] - vertices[j]).normalized);
       sum_x[j] += 0.5F * (vertices[i] + vertices[j] -
           L[e] * (vertices[i] - vertices[j]).normalized);
-      sum_n[i]++;
-      sum_n[j]++;
+      sum_n[i] += 1;
+      sum_n[j] += 1;
     }
 
     for (int i = 0; i < vertices.Length; ++i)
@@ -167,17 +168,29 @@ public class PBD_model: MonoBehaviour {
     mesh.vertices = vertices;
   }
 
-	void Collision_Handling()
-	{
-		Mesh mesh = GetComponent<MeshFilter> ().mesh;
-		Vector3[] X = mesh.vertices;
+  void Collision_Handling()
+  {
+    Mesh mesh = GetComponent<MeshFilter> ().mesh;
+    Vector3[] X = mesh.vertices;
+    GameObject sphere = GameObject.Find("Sphere");
 
-		//For every vertex, detect collision and apply impulse if needed.
-		//...
-		mesh.vertices = X;
-	}
+    //For every vertex, detect collision and apply impulse if needed.
+    Vector3 c = sphere.transform.position;
+    float r = 2.7F;
+    for (int i = 0; i < X.Length; ++i)
+    {
+      float dist = (X[i] - c).magnitude - 2.7F;
+      if (dist < 0)
+      {
+        V[i] += (c + (X[i] - c).normalized * r - X[i]) / t;
+        X[i] = c + (X[i] - c).normalized * r;
+      }
+    }
 
-	// Update is called once per frame
+    mesh.vertices = X;
+  }
+
+  // Update is called once per frame
   void Update ()
   {
     Mesh mesh = GetComponent<MeshFilter> ().mesh;
@@ -194,13 +207,12 @@ public class PBD_model: MonoBehaviour {
     }
     mesh.vertices = X;
 
-    for(int l=0; l<320; l++)
+    for(int l=0; l<32; l++)
       Strain_Limiting ();
 
     Collision_Handling ();
 
     mesh.RecalculateNormals ();
-
   }
 
 
