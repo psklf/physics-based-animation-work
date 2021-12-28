@@ -6,30 +6,70 @@ using System.IO;
 
 public class FVM : MonoBehaviour
 {
-  float dt 			    = 0.003f;
-  float mass 			  = 1;
+  float dt          = 0.003f;
+  float mass        = 1;
   float stiffness_0	= 20000.0f;
   float stiffness_1	= 5000.0f;
-  float damp			  = 0.999f;
+  float damp        = 0.996f;
 
   Vector3 kGravity = new Vector3(0, -9.8F, 0);
   Vector3 kFloorNormal = new Vector3(0, 1.0F, 0);
 
-  int[] 		Tet;
-  int tet_number;			//The number of tetrahedra
+  int[] Tet;
+  int tet_number;			// The number of tetrahedra
 
   Vector3[] 	Force;
   Vector3[] 	V;
   Vector3[] 	X;
-  int number;				//The number of vertices
+  int number;				// The number of vertices
 
   Matrix4x4[] inv_Dm;
 
   //For Laplacian smoothing.
-  Vector3[]   V_sum;
-  int[]		V_num;
+  Vector3[] V_sum;
+  int[]     V_num;
 
   SVD svd = new SVD();
+
+  // Helper Function
+  Matrix4x4 Matrix4_Sub(Matrix4x4 l, Matrix4x4 rh)
+  {
+    Matrix4x4 m = Matrix4x4.zero;
+    for (int r = 0; r < 4; ++r)
+    {
+      for (int c = 0; c < 4; ++c)
+      {
+        m[r, c] = l[r, c] - rh[r, c];
+      }
+    }
+    return m;
+  }
+
+  Matrix4x4 Matrix4_Add(Matrix4x4 l, Matrix4x4 rh)
+  {
+    Matrix4x4 m = Matrix4x4.zero;
+    for (int r = 0; r < 4; ++r)
+    {
+      for (int c = 0; c < 4; ++c)
+      {
+        m[r, c] = l[r, c] + rh[r, c];
+      }
+    }
+    return m;
+  }
+
+  Matrix4x4 Matrix4_Multiply(Matrix4x4 m, float v)
+  {
+    Matrix4x4 ret = Matrix4x4.zero;
+    for (int r = 0; r < 4; ++r)
+    {
+      for (int c = 0; c < 4; ++c)
+      {
+        ret[r, c] = m[r, c] * v;
+      }
+    }
+    return ret;
+  }
 
   // Start is called before the first frame update
   void Start()
@@ -131,14 +171,26 @@ public class FVM : MonoBehaviour
     V_sum = new Vector3[number];
     V_num = new int[number];
 
-    //TODO: Need to allocate and assign inv_Dm
+    // Need to allocate and assign inv_Dm
+    inv_Dm = new Matrix4x4[tet_number];
+    for (int tet=0; tet<tet_number; tet++)
+    {
+      inv_Dm[tet] = Build_Edge_Matrix(tet).inverse;
+    }
   }
 
   Matrix4x4 Build_Edge_Matrix(int tet)
   {
-    Matrix4x4 ret=Matrix4x4.zero;
-    //TODO: Need to build edge matrix here.
-
+    Matrix4x4 ret = Matrix4x4.zero;
+    // Need to build edge matrix here.
+    Vector3 v0 = X[Tet[tet * 4 + 0]];
+    Vector3 v1 = X[Tet[tet * 4 + 1]];
+    Vector3 v2 = X[Tet[tet * 4 + 2]];
+    Vector3 v3 = X[Tet[tet * 4 + 3]];
+    ret.SetColumn(0, v1 - v0);
+    ret.SetColumn(1, v2 - v0);
+    ret.SetColumn(2, v3 - v0);
+    ret.SetColumn(3, new Vector4(0, 0, 0, 1));
     return ret;
   }
 
@@ -154,36 +206,60 @@ public class FVM : MonoBehaviour
 
     for(int i=0; i<number; i++)
     {
-      //TODO: Add gravity to Force.
-      V[i] += kGravity;
+      // Add gravity to Force.
+      Force[i] = kGravity * mass;
     }
 
+    //
     for(int tet=0; tet<tet_number; tet++)
     {
-      //TODO: Deformation Gradient
+      // Deformation Gradient
+      Matrix4x4 X_cur = Build_Edge_Matrix(tet);
+      Matrix4x4 F = X_cur * inv_Dm[tet];
 
-      //TODO: Green Strain
+      // Green Strain
+      Matrix4x4 GS = Matrix4_Multiply(Matrix4_Sub(F.transpose * F, Matrix4x4.identity),
+                                      0.5F);
+      // Second PK Stress
+      float trace = GS[0, 0] + GS[1, 1] + GS[2, 2];
+      Matrix4x4 S = Matrix4_Add(Matrix4_Multiply(GS, 2.0F * stiffness_1),
+                                Matrix4_Multiply(Matrix4x4.identity, stiffness_0 * trace));
 
-      //TODO: Second PK Stress
 
-      //TODO: Elastic Force
+      // Elastic Force
+      Matrix4x4 P = F * S;
+      Matrix4x4 force_123 = Matrix4_Multiply(P * inv_Dm[tet].transpose,
+                                             -1.0F / inv_Dm[tet].determinant / 6.0F);
 
+      // Apply Force to vertex
+      Vector3 sum = Vector3.zero;
+      Force[Tet[tet * 4 + 1]] += (Vector3)force_123.GetColumn(0);
+      sum += (Vector3)force_123.GetColumn(0);
+      Force[Tet[tet * 4 + 2]] += (Vector3)force_123.GetColumn(1);
+      sum += (Vector3)force_123.GetColumn(1);
+      Force[Tet[tet * 4 + 3]] += (Vector3)force_123.GetColumn(2);
+      sum += (Vector3)force_123.GetColumn(2);
+      Force[Tet[tet * 4 + 0]] += -sum;
     }
+    //
 
     for(int i=0; i<number; i++)
     {
-      //TODO: Update X and V here.
+      //  Update X and V here.
+      V[i] += Force[i] / mass * dt;
+      V[i] *= damp;
       X[i] += V[i] * dt;
 
 
-      //TODO: (Particle) collision with floor.
+      //  (Particle) collision with floor.
       // impulse
       //
-      float dist = (X[i].y);
+      float floor_y = -3.0F;
+      float dist = (X[i].y - floor_y);
       if (dist < 0)
       {
-        V[i] += (Math.Abs(X[i].y) * kFloorNormal) / dt;
-        X[i] += Math.Abs(X[i].y) * kFloorNormal;
+        V[i] += (Math.Abs(dist) * kFloorNormal) / dt;
+        X[i] += Math.Abs(dist) * kFloorNormal;
       }
       //
     }
@@ -193,8 +269,9 @@ public class FVM : MonoBehaviour
   void Update()
   {
     for(int l=0; l<10; l++)
+    {
       _Update();
-
+    }
     // Dump the vertex array for rendering.
     Vector3[] vertices = new Vector3[tet_number*12];
     int vertex_number=0;
