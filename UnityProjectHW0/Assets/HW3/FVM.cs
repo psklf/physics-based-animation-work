@@ -17,6 +17,7 @@ public class FVM : MonoBehaviour
 
   Vector3 kGravity = new Vector3(0, -9.8F, 0);
   Vector3 kFloorNormal = new Vector3(0, 1.0F, 0);
+  bool kFVM = false;
 
   int[] Tet;
   int tet_number;			// The number of tetrahedra
@@ -72,6 +73,71 @@ public class FVM : MonoBehaviour
       }
     }
     return ret;
+  }
+
+  float GetdWdLamda(Matrix4x4 Singular, int i)
+  {
+    float I_c = Mathf.Pow(Singular[0, 0], 2) + Mathf.Pow(Singular[1, 1], 2) +
+      Mathf.Pow(Singular[2, 2], 2);
+    float III_c = Mathf.Pow(Singular[0, 0], 4) + Mathf.Pow(Singular[1, 1], 4) +
+      Mathf.Pow(Singular[2, 2], 4);
+
+    // neo-Hookean
+    float ret = (-1.0F/3.0F * stiffness_0 * I_c * Mathf.Pow(III_c, -4.0F / 3.0F) -
+                0.5F * stiffness_1 * Mathf.Pow(III_c, -1.5F)) * 4.0F * Mathf.Pow(Singular[i, i], 3) +
+    stiffness_0 * Mathf.Pow(III_c, -1.0F / 3.0F) * 2.0F * Singular[i, i];
+
+    return ret;
+  }
+
+  Matrix4x4 GetFirstPKStress(Matrix4x4 F)
+  {
+    if (kFVM)
+    {
+      // Green Strain
+      Matrix4x4 GS = Matrix4_Multiply(Matrix4_Sub(F.transpose * F, Matrix4x4.identity),
+          0.5F);
+      // Second PK Stress
+      float trace = GS[0, 0] + GS[1, 1] + GS[2, 2];
+      Matrix4x4 S = Matrix4_Add(Matrix4_Multiply(GS, 2.0F * stiffness_1),
+          Matrix4_Multiply(Matrix4x4.identity, stiffness_0 * trace));
+
+      // Elastic Force
+      Matrix4x4 P = F * S;
+      return P;
+    }
+    else
+    {
+      // SVD
+      Matrix4x4 U = Matrix4x4.zero;
+      Matrix4x4 S = Matrix4x4.zero;
+      Matrix4x4 V_t = Matrix4x4.zero;
+      svd.svd(F, ref U, ref S, ref V_t);
+      Matrix4x4 diag = Matrix4x4.zero;
+      // N-H
+      // for (int i = 0; i < 3; ++i) { diag[i, i] = GetdWdLamda(S, i); }
+
+      // StVk
+      float l0l0 = Mathf.Pow(S[0, 0], 2);
+      float l1l1 = Mathf.Pow(S[1, 1], 2);
+      float l2l2 = Mathf.Pow(S[2, 2], 2);
+      float I_c = Mathf.Pow(S[0, 0], 2) + Mathf.Pow(S[1, 1], 2) +
+                  Mathf.Pow(S[2, 2], 2);
+      float II_c = l0l0 * l1l1 + l0l0 * l2l2 + l1l1 * l2l2;
+      float d00 = stiffness_1 / 2.0F * (l1l1 * S[0, 0] + l2l2 * S[0, 0]) +
+        2.0F * S[0, 0] * (stiffness_0 * I_c - 3.0F * stiffness_0 - 0.5F * stiffness_1 * I_c);
+      float d11 = stiffness_1 / 2.0F * (l0l0 * S[1, 1] + l2l2 * S[1, 1]) +
+        2.0F * S[1, 1] * (stiffness_0 * I_c - 3.0F * stiffness_0 - 0.5F * stiffness_1 * I_c);
+      float d22 = stiffness_1 / 2.0F * (l1l1 * S[2, 2] + l0l0 * S[2, 2]) +
+        2.0F * S[2, 2] * (stiffness_0 * I_c - 3.0F * stiffness_0 - 0.5F * stiffness_1 * I_c);
+
+      diag[0, 0] = d00;
+      diag[1, 1] = d11;
+      diag[2, 2] = d22;
+
+      Matrix4x4 P = U * diag * V_t.transpose;
+      return P;
+    }
   }
 
   // Start is called before the first frame update
@@ -223,6 +289,9 @@ public class FVM : MonoBehaviour
       Matrix4x4 X_cur = Build_Edge_Matrix(tet);
       Matrix4x4 F = X_cur * inv_Dm[tet];
 
+      Matrix4x4 P = GetFirstPKStress(F);
+
+      /*
       // Green Strain
       Matrix4x4 GS = Matrix4_Multiply(Matrix4_Sub(F.transpose * F, Matrix4x4.identity),
                                       0.5F);
@@ -234,6 +303,7 @@ public class FVM : MonoBehaviour
 
       // Elastic Force
       Matrix4x4 P = F * S;
+      */
       Matrix4x4 force_123 = Matrix4_Multiply(P * inv_Dm[tet].transpose,
                                              -1.0F / inv_Dm[tet].determinant / 6.0F);
 
