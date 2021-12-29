@@ -10,7 +10,10 @@ public class FVM : MonoBehaviour
   float mass        = 1;
   float stiffness_0	= 20000.0f;
   float stiffness_1	= 5000.0f;
-  float damp        = 0.996f;
+  float damp        = 0.999f;
+
+  float restitution   = 6.0f;					// for collision
+  float restitution_t = 0.3f;					// for collision
 
   Vector3 kGravity = new Vector3(0, -9.8F, 0);
   Vector3 kFloorNormal = new Vector3(0, 1.0F, 0);
@@ -208,9 +211,12 @@ public class FVM : MonoBehaviour
     {
       // Add gravity to Force.
       Force[i] = kGravity * mass;
+
+      // Reset
+      V_sum[i] = Vector3.zero;
+      V_num[i] = 0;
     }
 
-    //
     for(int tet=0; tet<tet_number; tet++)
     {
       // Deformation Gradient
@@ -232,36 +238,60 @@ public class FVM : MonoBehaviour
                                              -1.0F / inv_Dm[tet].determinant / 6.0F);
 
       // Apply Force to vertex
-      Vector3 sum = Vector3.zero;
+      Vector3 minus_f0 = Vector3.zero;
       Force[Tet[tet * 4 + 1]] += (Vector3)force_123.GetColumn(0);
-      sum += (Vector3)force_123.GetColumn(0);
+      minus_f0 += (Vector3)force_123.GetColumn(0);
       Force[Tet[tet * 4 + 2]] += (Vector3)force_123.GetColumn(1);
-      sum += (Vector3)force_123.GetColumn(1);
+      minus_f0 += (Vector3)force_123.GetColumn(1);
       Force[Tet[tet * 4 + 3]] += (Vector3)force_123.GetColumn(2);
-      sum += (Vector3)force_123.GetColumn(2);
-      Force[Tet[tet * 4 + 0]] += -sum;
+      minus_f0 += (Vector3)force_123.GetColumn(2);
+      Force[Tet[tet * 4 + 0]] += -minus_f0;
     }
-    //
+
+    for (int i = 0; i < number; i++)
+    {
+      V[i] += Force[i] / mass * dt;
+    }
+    for (int tet = 0; tet < tet_number; ++tet)
+    {
+      int[] ids = new int[4];
+      for (int j = 0; j < 4; ++j) { ids[j] = Tet[tet * 4 + j]; }
+      Vector3 sum_v = V[ids[0]] + V[ids[1]] + V[ids[2]] + V[ids[3]];
+
+      for (int j = 0; j < 4; ++j)
+      {
+        V_sum[ids[j]] += sum_v;
+        V_num[ids[j]] += 4;
+      }
+    }
 
     for(int i=0; i<number; i++)
     {
       //  Update X and V here.
-      V[i] += Force[i] / mass * dt;
+      if (i == 100) {
+       Debug.Log("num of neighbour " + V_num[i] + " average V " + (V_sum[i] ) / (V_num[i] )+ " origin v " + V[i]);
+      }
+      V[i] = V_sum[i] / V_num[i];
       V[i] *= damp;
       X[i] += V[i] * dt;
 
-
       //  (Particle) collision with floor.
       // impulse
-      //
       float floor_y = -3.0F;
       float dist = (X[i].y - floor_y);
       if (dist < 0)
       {
-        V[i] += (Math.Abs(dist) * kFloorNormal) / dt;
-        X[i] += Math.Abs(dist) * kFloorNormal;
+        if (V[i].y >= 0) { continue; }
+
+        Vector3 V_n0 = kFloorNormal * V[i].y;
+        Vector3 V_t0 = V[i] - V_n0;
+        float a =
+          Math.Max(1.0F - restitution_t * (1 + restitution) * V_n0.magnitude / V_t0.magnitude, 0);
+        V_t0 *= a;
+        V_n0 = -restitution * V_n0;
+        V[i] = V_n0 + V_t0;
+        // Debug.Log("i: after " + i + " Vn: " + V_n0.ToString("F4") + " Vt: " + V_t0.ToString("F4"));
       }
-      //
     }
   }
 
