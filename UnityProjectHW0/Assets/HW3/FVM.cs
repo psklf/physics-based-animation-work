@@ -17,7 +17,9 @@ public class FVM : MonoBehaviour
 
   Vector3 kGravity = new Vector3(0, -9.8F, 0);
   Vector3 kFloorNormal = new Vector3(0, 1.0F, 0);
-  bool kFVM = false;
+
+  // use this switch between green strain method and SVD method
+  bool use_green_strain_pk = false;
 
   int[] Tet;
   int tet_number;			// The number of tetrahedra
@@ -75,24 +77,24 @@ public class FVM : MonoBehaviour
     return ret;
   }
 
-  float GetdWdLamda(Matrix4x4 Singular, int i)
+  float GetdWdLambda(float I_c, float II_c, float III_c, float lambda)
   {
-    float I_c = Mathf.Pow(Singular[0, 0], 2) + Mathf.Pow(Singular[1, 1], 2) +
-      Mathf.Pow(Singular[2, 2], 2);
-    float III_c = Mathf.Pow(Singular[0, 0], 4) + Mathf.Pow(Singular[1, 1], 4) +
-      Mathf.Pow(Singular[2, 2], 4);
-
     // neo-Hookean
-    float ret = (-1.0F/3.0F * stiffness_0 * I_c * Mathf.Pow(III_c, -4.0F / 3.0F) -
-                0.5F * stiffness_1 * Mathf.Pow(III_c, -1.5F)) * 4.0F * Mathf.Pow(Singular[i, i], 3) +
-    stiffness_0 * Mathf.Pow(III_c, -1.0F / 3.0F) * 2.0F * Singular[i, i];
+    // float ret = (-1.0F/3.0F * stiffness_0 * I_c * Mathf.Pow(III_c, -4.0F / 3.0F) -
+    //            0.5F * stiffness_1 * Mathf.Pow(III_c, -1.5F)) * 4.0F * Mathf.Pow(lambda, 3) +
+    // stiffness_0 * Mathf.Pow(III_c, -1.0F / 3.0F) * 2.0F * lambda;
+
+
+    // W = s0/2[I_c - 3]^2 + s1/4[III_c - 2I_c + 3]
+    float ret = stiffness_1 * 0.25F * 4.0F * Mathf.Pow(lambda, 3) +
+      (stiffness_0 * (I_c - 3) - 0.5F * stiffness_1) * 2.0F * lambda;
 
     return ret;
   }
 
   Matrix4x4 GetFirstPKStress(Matrix4x4 F)
   {
-    if (kFVM)
+    if (use_green_strain_pk)
     {
       // Green Strain
       Matrix4x4 GS = Matrix4_Multiply(Matrix4_Sub(F.transpose * F, Matrix4x4.identity),
@@ -113,11 +115,17 @@ public class FVM : MonoBehaviour
       Matrix4x4 S = Matrix4x4.zero;
       Matrix4x4 V_t = Matrix4x4.zero;
       svd.svd(F, ref U, ref S, ref V_t);
+
+      float I_c = Mathf.Pow(S[0, 0], 2) + Mathf.Pow(S[1, 1], 2) +
+        Mathf.Pow(S[2, 2], 2);
+      float III_c = Mathf.Pow(S[0, 0], 4) + Mathf.Pow(S[1, 1], 4) +
+        Mathf.Pow(S[2, 2], 4);
+
       Matrix4x4 diag = Matrix4x4.zero;
-      // N-H
-      // for (int i = 0; i < 3; ++i) { diag[i, i] = GetdWdLamda(S, i); }
+      for (int i = 0; i < 3; ++i) { diag[i, i] = GetdWdLambda(I_c, 0, III_c, S[i, i]); }
 
       // StVk
+      /*
       float l0l0 = Mathf.Pow(S[0, 0], 2);
       float l1l1 = Mathf.Pow(S[1, 1], 2);
       float l2l2 = Mathf.Pow(S[2, 2], 2);
@@ -134,6 +142,7 @@ public class FVM : MonoBehaviour
       diag[0, 0] = d00;
       diag[1, 1] = d11;
       diag[2, 2] = d22;
+      */
 
       Matrix4x4 P = U * diag * V_t.transpose;
       return P;
@@ -338,9 +347,6 @@ public class FVM : MonoBehaviour
     for(int i=0; i<number; i++)
     {
       //  Update X and V here.
-      if (i == 100) {
-       Debug.Log("num of neighbour " + V_num[i] + " average V " + (V_sum[i] ) / (V_num[i] )+ " origin v " + V[i]);
-      }
       V[i] = V_sum[i] / V_num[i];
       V[i] *= damp;
       X[i] += V[i] * dt;
