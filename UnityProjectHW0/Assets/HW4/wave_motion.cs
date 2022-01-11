@@ -16,7 +16,7 @@ public class wave_motion : MonoBehaviour
   float[,]	cg_p;
   float[,]	cg_r;
   float[,]	cg_Ap;
-  bool 	tag=true;
+  bool 	tag = true;
 
   Vector3 	cube_v = Vector3.zero;
   Vector3 	cube_w = Vector3.zero;
@@ -144,8 +144,26 @@ public class wave_motion : MonoBehaviour
 
   void Shallow_Wave(float[,] old_h, float[,] h, float [,] new_h)
   {
-    //Step 1:
-    //TODO: Compute new_h based on the shallow wave model.
+    // Step 1:
+    // Compute new_h based on the shallow wave model.
+    for (int i = 0; i < size; i++)
+    {
+      for (int j = 0; j < size; j++)
+      {
+        new_h[i, j] = h[i, j] + damping * (h[i, j] - old_h[i, j]);
+      }
+    }
+    for (int i = 0; i < size; i++)
+    {
+      for (int j = 0; j < size; j++)
+      {
+        float h_ij = h[i, j];
+        if (i > 0) { new_h[i, j] += rate * (h[i - 1, j] - h_ij); }
+        if (i < (size - 1)) { new_h[i, j] += rate * (h[i + 1, j] - h_ij); }
+        if (j > 0) { new_h[i, j] += rate * (h[i, j - 1] - h_ij); }
+        if (j < (size - 1)) { new_h[i, j] += rate * (h[i, j + 1] - h_ij); }
+      }
+    }
 
     //Step 2: Block->Water coupling
     //TODO: for block 1, calculate low_h.
@@ -160,9 +178,16 @@ public class wave_motion : MonoBehaviour
 
     //TODO: Update new_h by vh.
 
-    //Step 3
-    //TODO: old_h <- h; h <- new_h;
-
+    // Step 3
+    // old_h <- h; h <- new_h;
+    for (int i = 0; i < size; i++)
+    {
+      for (int j = 0; j < size; j++)
+      {
+        old_h[i, j] = h[i, j];
+        h[i, j] = new_h[i, j];
+      }
+    }
     //Step 4: Water->Block coupling.
     //More TODO here.
   }
@@ -176,11 +201,26 @@ public class wave_motion : MonoBehaviour
     float[,] new_h = new float[size, size];
     float[,] h     = new float[size, size];
 
-    //TODO: Load X.y into h.
+    // : Load X.y into h.
+    for (int i = 0; i < size; i++)
+    {
+      for (int j = 0; j < size; j++)
+      {
+        h[i, j] = X[i * size + j].y;
+      }
+    }
 
+    // Add random water.
     if (Input.GetKeyDown ("r"))
     {
-      //TODO: Add random water.
+      float random_water = Random.value - 0.5F;
+      int col = (int)(Random.value * (size - 3) + 1);
+      int row = (int)(Random.value * (size - 3) + 1);
+      h[col, row] += random_water;
+      h[col - 1, row] -= random_water * 0.25F;
+      h[col + 1, row] -= random_water * 0.25F;
+      h[col, row - 1] -= random_water * 0.25F;
+      h[col, row + 1] -= random_water * 0.25F;
     }
 
     for(int l=0; l<8; l++)
@@ -188,8 +228,16 @@ public class wave_motion : MonoBehaviour
       Shallow_Wave(old_h, h, new_h);
     }
 
-    //TODO: Store h back into X.y and recalculate normal.
+    // Store h back into X.y and recalculate normal.
+    for (int i = 0; i < size; i++)
+    {
+      for (int j = 0; j < size; j++)
+      {
+        X[i * size + j].y = h[i, j];
+      }
+    }
 
-
+    mesh.vertices = X;
+    mesh.RecalculateNormals();
   }
 }
