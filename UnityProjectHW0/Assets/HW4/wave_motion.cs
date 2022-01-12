@@ -166,17 +166,100 @@ public class wave_motion : MonoBehaviour
     }
 
     //Step 2: Block->Water coupling
-    //TODO: for block 1, calculate low_h.
-    //TODO: then set up b and cg_mask for conjugate gradient.
-    //TODO: Solve the Poisson equation to obtain vh (virtual height).
+    // for block 1, calculate low_h.
+    for (int i = 0; i < size; i++)
+    {
+      for (int j = 0; j < size; j++)
+      {
+        low_h[i, j] = new_h[i, j];
+      }
+    }
+
+    // then set up b and cg_mask for conjugate gradient.
+    GameObject cube = GameObject.Find("Cube");
+    Vector3 c1 = cube.transform.position;
+    float cube_size = 0.5F;
+    for (int i = 0; i < size; i++)
+    {
+      for (int j = 0; j < size; j++)
+      {
+        Vector3 cur_p = new Vector3(i * 10.0F / size - 5.0F, 0.0F, j * 10.0F / size - 5.0F);
+        if (Mathf.Abs(cur_p.x - c1.x) < 0.5F && Mathf.Abs(cur_p.z - c1.z) < 0.5F)
+        {
+          low_h[i, j] -= 0.1F;
+          cg_mask[i, j] = true;
+          b[i, j] = (new_h[i, j] - low_h[i, j]) / rate;
+        }
+        else
+        {
+          cg_mask[i, j] = false;
+          b[i, j] = 0.0F;
+        }
+      }
+    }
+
+    // Mesh cube_mesh = cube.GetComponent<MeshFilter>().mesh;
+
+    // Solve the Poisson equation to obtain vh (virtual height).
+    //     save result to x1
+    float[,] x1 = new float[size, size];
+    Conjugate_Gradient(cg_mask, b, x1, 0, size - 1, 0, size - 1);
 
     //TODO: for block 2, calculate low_h.
+    for (int i = 0; i < size; i++)
+    {
+      for (int j = 0; j < size; j++)
+      {
+        low_h[i, j] = new_h[i, j];
+      }
+    }
+
     //TODO: then set up b and cg_mask for conjugate gradient.
     //TODO: Solve the Poisson equation to obtain vh (virtual height).
+    GameObject cube2 = GameObject.Find("Block");
+    Vector3 c2 = cube2.transform.position;
+    for (int i = 0; i < size; i++)
+    {
+      for (int j = 0; j < size; j++)
+      {
+        Vector3 cur_p = new Vector3(i * 10.0F / size - 5.0F, 0.0F, j * 10.0F / size - 5.0F);
+        if (Mathf.Abs(cur_p.x - c2.x) < 0.5F && Mathf.Abs(cur_p.z - c2.z) < 0.5F)
+        {
+          low_h[i, j] -= 0.1F;
+          cg_mask[i, j] = true;
+          b[i, j] = (new_h[i, j] - low_h[i, j]) / rate;
+        }
+        else
+        {
+          cg_mask[i, j] = false;
+          b[i, j] = 0.0F;
+        }
+      }
+    }
+    float[,] x2 = new float[size, size];
+    Conjugate_Gradient(cg_mask, b, x2, 0, size - 1, 0, size - 1);
 
-    //TODO: Diminish vh.
+    // Diminish vh by x1+x2
+    for (int i = 0; i < size; i++)
+    {
+      for (int j = 0; j < size; j++)
+      {
+        vh[i, j] = (x1[i, j] + x2[i, j]) * gamma;
+      }
+    }
 
-    //TODO: Update new_h by vh.
+    // Update new_h by vh.
+    for (int i = 0; i < size; i++)
+    {
+      for (int j = 0; j < size; j++)
+      {
+        float v_ij = vh[i, j];
+        if (i != 0) { new_h[i, j] += rate * (vh[i - 1, j] - v_ij); }
+        if (i != (size - 1)) { new_h[i, j] += rate * (vh[i + 1, j] - v_ij); }
+        if (j != 0) { new_h[i, j] += rate * (vh[i, j - 1] - v_ij); }
+        if (j != (size - 1)) { new_h[i, j] += rate * (vh[i, j + 1] - v_ij); }
+      }
+    }
 
     // Step 3
     // old_h <- h; h <- new_h;
