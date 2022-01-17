@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 public class wave_motion : MonoBehaviour
 {
@@ -23,14 +24,14 @@ public class wave_motion : MonoBehaviour
 
   Vector3 kGravity    = new Vector3(0, -9.8F, 0);
   float dt            = 0.003F;
-  float mass          = 300.0F;
-	float angular_decay = 0.98F;
-	float restitution   = 0.5f;					// for collision
-	float restitution_t = 0.3f;					// for collision
+  float mass          = 500.0F;
+  float m;
+  float angular_decay = 0.8F;
+  Matrix4x4 I_ref = Matrix4x4.identity;
 
+  // Get the cross product matrix of vector a
 	Matrix4x4 Get_Cross_Matrix(Vector3 a)
 	{
-		//Get the cross product matrix of vector a
 		Matrix4x4 A = Matrix4x4.zero;
 		A [0, 0] = 0;
 		A [0, 1] = -a [2];
@@ -62,14 +63,6 @@ public class wave_motion : MonoBehaviour
       }
     }
     return m;
-  }
-
-  Quaternion Update_Rotation_w(Quaternion q, Vector3 w, float dt)
-  {
-    Vector3 wdt = w * dt * 0.5F;
-    Quaternion omega_q = new Quaternion(wdt.x, wdt.y, wdt.z, 0);
-    Quaternion dq = omega_q * q;
-    return Quaternion_Add(q, dq).normalized;
   }
 
   // Use this for initialization
@@ -127,6 +120,12 @@ public class wave_motion : MonoBehaviour
     cube_v[1] = Vector3.zero;
     cube_w[0] = Vector3.zero;
     cube_w[1] = Vector3.zero;
+
+    GameObject cube1 = GameObject.Find("Cube");
+    GameObject cube2 = GameObject.Find("Block");
+    Mesh cube_mesh = cube1.GetComponent<MeshFilter>().mesh;
+    m = mass / cube_mesh.vertices.Length;
+    InitCubeIref(cube_mesh.vertices);
   }
 
   void A_Times(bool[,] mask, float[,] x, float[,] Ax, int li, int ui, int lj, int uj)
@@ -194,7 +193,6 @@ public class wave_motion : MonoBehaviour
             cg_p[i,j]=cg_r[i,j]+beta*cg_p[i,j];
           }
     }
-
   }
 
   void Shallow_Wave(float[,] old_h, float[,] h, float [,] new_h)
@@ -240,10 +238,10 @@ public class wave_motion : MonoBehaviour
     GameObject cube = GameObject.Find("Cube");
     Vector3 c1 = cube.transform.position;
 
-    int li = (int) ((c1.x - 0.5F + 5.0F) * 0.1F * size);
-    int ui = li + cube_step;
-    int lj = (int) ((c1.z - 0.5F + 5.0F) * 0.1F * size);
-    int uj = lj + cube_step;
+    int li1 = (int) ((c1.x - cube_size + 5.0F) * 0.1F * size);
+    int ui1 = li1 + cube_step;
+    int lj1 = (int) ((c1.z - cube_size + 5.0F) * 0.1F * size);
+    int uj1 = lj1 + cube_step;
 
     Collider collider1 = cube.GetComponent<Collider>();
 
@@ -256,36 +254,41 @@ public class wave_motion : MonoBehaviour
       }
     }  // end of water grid loop
 
-    for (int i = li; i <= ui; ++i)
+    List<Vector3> hit_list_1 = new List<Vector3>();
+    List<int[]> index_list_1 = new List<int[]>();
+    for (int i = li1; i <= ui1; ++i)
     {
-      for (int j = lj; j <= uj; ++j)
+      for (int j = lj1; j <= uj1; ++j)
       {
+        if (i < 0 || i >= size || j < 0 || j >= size) { continue; }
         // Whether this cube is collide w/ current water grid
         Vector3 cur_p = new Vector3(i * 10.0F / size - 5.0F, new_h[i, j],
             j * 10.0F / size - 5.0F);
 
         Vector3 ray_s = cur_p;
-        ray_s.y -= 1.0F;
+        ray_s.y -= 10.0F;
         Ray ray = new Ray(ray_s, new Vector3(0, 1, 0));
 
         float distance;
-    //    if (collider1.bounds.IntersectRay(ray, out distance))
-    //    {
-    //      Vector3 hit_point = ray_s + new Vector3(0, distance, 0);
-    //      if (hit_point.y < new_h[i, j])
+        if (collider1.bounds.IntersectRay(ray, out distance))
+        {
+          Vector3 hit_point = ray_s + new Vector3(0, distance, 0);
+
+          if (hit_point.y < new_h[i, j])
           {
-             low_h[i, j] = c1.y - 0.5F;
-            //Debug.Log("Raycast " + hit_point);
-            //low_h[i, j] = hit_point.y;
+             // low_h[i, j] = c1.y - 0.5F;
+            low_h[i, j] = hit_point.y;
             cg_mask[i, j] = true;
             b[i, j] = (new_h[i, j] - low_h[i, j]) / rate;
+
+            // save point
+            hit_list_1.Add(hit_point - c1);
+            index_list_1.Add(new int[2]{i, j});
           }
-    //    }  // end of intersect ray
-
+        }  // end of intersect ray
       }
-    }
+    }  // end of cube1 low h loop
 
-    // Mesh cube_mesh = cube.GetComponent<MeshFilter>().mesh;
 
     // Solve the Poisson equation to obtain vh (virtual height).
     //     save result to x1
@@ -297,8 +300,7 @@ public class wave_motion : MonoBehaviour
         x1[i, j] = 0;
       }
     }
-    // (bool[,] mask, float[,] b, float[,] x, int li, int ui, int lj, int uj)
-    Conjugate_Gradient(cg_mask, b, x1, li, ui, lj, uj);
+    Conjugate_Gradient(cg_mask, b, x1, li1, ui1, lj1, uj1);
 
     //TODO: for block 2, calculate low_h.
     //
@@ -315,10 +317,10 @@ public class wave_motion : MonoBehaviour
     GameObject cube2 = GameObject.Find("Block");
     Vector3 c2 = cube2.transform.position;
 
-    li = (int) ((c2.x - 0.5F + 5.0F) * 0.1F * size);
-    ui = li + cube_step;
-    lj = (int) ((c2.z - 0.5F + 5.0F) * 0.1F * size);
-    uj = lj + cube_step;
+    int li = (int) ((c2.x - 0.5F + 5.0F) * 0.1F * size);
+    int ui = li + cube_step;
+    int lj = (int) ((c2.z - 0.5F + 5.0F) * 0.1F * size);
+    int uj = lj + cube_step;
 
     Collider collider2 = cube2.GetComponent<Collider>();
 
@@ -331,10 +333,13 @@ public class wave_motion : MonoBehaviour
       }
     }
 
+    List<Vector3> hit_list_2 = new List<Vector3>();
+    List<int[]> index_list_2 = new List<int[]>();
     for (int i = li; i <= ui; ++i)
     {
       for (int j = lj; j <= uj; ++j)
       {
+        if (i < 0 || i >= size || j < 0 || j >= size) {continue;}
         // Whether this cube is collide w/ current water grid
         Vector3 cur_p = new Vector3(i * 10.0F / size - 5.0F, new_h[i, j],
             j * 10.0F / size - 5.0F);
@@ -344,17 +349,19 @@ public class wave_motion : MonoBehaviour
         Ray ray = new Ray(ray_s, new Vector3(0, 1, 0));
 
         float distance;
-      //  if (collider2.bounds.IntersectRay(ray, out distance))
-      //  {
-      //    Vector3 hit_point = ray_s + new Vector3(0, distance, 0);
-          //if (hit_point.y < new_h[i, j])
-          //{
-             low_h[i, j] = c2.y - 0.5F;
-            //low_h[i, j] = hit_point.y;
+        if (collider2.bounds.IntersectRay(ray, out distance))
+        {
+          Vector3 hit_point = ray_s + new Vector3(0, distance, 0);
+          if (hit_point.y < new_h[i, j])
+          {
+            //low_h[i, j] = c2.y - 0.5F;
+            low_h[i, j] = hit_point.y;
             cg_mask[i, j] = true;
             b[i, j] = (new_h[i, j] - low_h[i, j]) / rate;
-          //}
-      //  }  // end of intersect ray
+            hit_list_2.Add(hit_point - c2);
+            index_list_2.Add(new int[2]{i, j});
+          }
+        }  // end of intersect ray
       }
     }
     float[,] x2 = new float[size, size];
@@ -400,57 +407,75 @@ public class wave_motion : MonoBehaviour
       }
     }
 
-    //Step 4: Water->Block coupling.
-    //More TODO here.
+    // Step 4: Water->Block coupling.
+    // More TODO here.
+
+    // Dynamics for cubes
 
     // deltaA
     float area = 10.0F * 10.0F / (size * size);
+
+    // cube1
+    Quaternion q1 = cube.transform.rotation;
+    Matrix4x4 R1 = Matrix4x4.Rotate(q1);
+
     Vector3 water_f1 = Vector3.zero;
     Vector3 water_f2 = Vector3.zero;
-    for (int i = 0; i < size; i++)
-    {
-      for (int j = 0; j < size; j++)
-      {
-        Vector3 cur_p =
-          new Vector3(i * 10.0F / size - 5.0F, old_h[i, j], j * 10.0F / size - 5.0F);
-        if (Mathf.Abs(cur_p.x - c1.x) < 0.5F && Mathf.Abs(cur_p.z - c1.z) < 0.5F &&
-            Mathf.Abs(cur_p.y - c1.y) < 0.5F)
-        {
-          // water_f1.y += (old_h[i, j] - h[i, j]) * 9.8F * 997.0F * area;
-          // water_f1.y += (vh[i, j]) * rate / dt / dt;
-          water_f1.y += (vh[i, j]) * 9.8F * 997.0F * area;
-        }
-        if (Mathf.Abs(cur_p.x - c2.x) < 0.5F && Mathf.Abs(cur_p.z - c2.z) < 0.5F &&
-            Mathf.Abs(cur_p.y - c2.y) < 0.5F)
-        {
-          water_f2.y += (vh[i, j]) * 9.8F * 997.0F * area;
-        }
-      }
-    }
 
-    Debug.Log("water force 1" + water_f1);
+    // cube1
+    // Get rotation by impuse
+    Vector3 sum_tao = Vector3.zero;
+    for (int i = 0; i < hit_list_1.Count; ++i)
+    {
+      Vector3 force = new Vector3(0,
+          vh[index_list_1[i][0], index_list_1[i][1]] * 9.8F * 997.0F * area,
+          0);
+      // don't why but should give a scale
+      sum_tao += Vector3.Cross(hit_list_1[i], force * 10);
+  //    Debug.Log("hit force" + force);
+ //     Debug.Log("point" + hit_list_1[i]);
+      water_f1 += force;
+    }
+ //   Debug.Log("sum tao" + sum_tao.ToString("F4"));
+    Matrix4x4 I = R1 * I_ref * R1.transpose;
+
+    cube_w[0] += (I.inverse.MultiplyPoint3x4(sum_tao) * dt);
+    cube_w[0] *= angular_decay;
+
     cube_v[0] += (kGravity + water_f1 / mass) * dt;
     cube_v[0] *= damping;
 
+    // cube2
+    Quaternion q2 = cube2.transform.rotation;
+    Matrix4x4 R2 = Matrix4x4.Rotate(q2);
 
-    // Calculate w
-    cube_w[0] *= angular_decay;
+    Vector3 sum_tao_2 = Vector3.zero;
+    for (int i = 0; i < hit_list_2.Count; ++i)
+    {
+      Vector3 force = new Vector3(0,
+          vh[index_list_2[i][0], index_list_2[i][1]] * 9.8F * 997.0F * area,
+          0);
+      sum_tao_2 += Vector3.Cross(hit_list_2[i], force * 1);
+      water_f2 += force;
+    }
 
-    // Update position and rotation
-
-		Quaternion q1 = cube.transform.rotation;
-    q1 = Update_Rotation_w(q1, cube_w[0], dt);
-
-    c1 += cube_v[0] * dt;
-    Debug.Log("pos 1" + c1);
-
-    cube.transform.position = c1;
-    cube.transform.rotation = q1;
+    Matrix4x4 I2 = R2 * I_ref * R2.transpose;
+    cube_w[1] += I2.inverse.MultiplyPoint3x4(sum_tao_2) * dt;
+    cube_w[1] *= angular_decay;
 
     cube_v[1] += (kGravity + water_f2 / mass) * dt;
     cube_v[1] *= damping;
+
+    // Update position and rotation
+    q1 = Update_Rotation_w(q1, cube_w[0], dt);
+    c1 += cube_v[0] * dt;
+    cube.transform.position = c1;
+    cube.transform.rotation = q1;
+
+    q2 = Update_Rotation_w(q2, cube_w[1], dt);
     c2 += cube_v[1] * dt;
     cube2.transform.position = c2;
+    cube2.transform.rotation = q2;
   }
 
   // Update is called once per frame
@@ -461,7 +486,7 @@ public class wave_motion : MonoBehaviour
     float[,] new_h = new float[size, size];
     float[,] h     = new float[size, size];
 
-    // : Load X.y into h.
+    //  Load X.y into h.
     for (int i = 0; i < size; i++)
     {
       for (int j = 0; j < size; j++)
@@ -483,12 +508,10 @@ public class wave_motion : MonoBehaviour
       h[col, row + 1] -= random_water * 0.25F;
     }
 
-    Debug.Log(" start Shallow_Wave" );
     for(int l=0; l<8; l++)
     {
       Shallow_Wave(old_h, h, new_h);
     }
-    Debug.Log(" stop Shallow_Wave" );
 
     // Store h back into X.y and recalculate normal.
     for (int i = 0; i < size; i++)
@@ -501,5 +524,42 @@ public class wave_motion : MonoBehaviour
 
     mesh.vertices = X;
     mesh.RecalculateNormals();
+  }
+
+  Quaternion Update_Rotation_w(Quaternion q, Vector3 w, float dt)
+  {
+    Vector3 wdt = w * dt * 0.5F;
+    Quaternion omega_q = new Quaternion(wdt.x, wdt.y, wdt.z, 0);
+    Quaternion dq = omega_q * q;
+    return Quaternion_Add(q, dq).normalized;
+  }
+
+  Matrix4x4 InitCubeIref(Vector3[] vertices)
+  {
+    float m = mass / vertices.Length;
+    for (int i=0; i<vertices.Length; i++)
+    {
+      float diag=m*vertices[i].sqrMagnitude;
+      I_ref[0, 0]+=diag;
+      I_ref[1, 1]+=diag;
+      I_ref[2, 2]+=diag;
+      I_ref[0, 0]-=m*vertices[i][0]*vertices[i][0];
+      I_ref[0, 1]-=m*vertices[i][0]*vertices[i][1];
+      I_ref[0, 2]-=m*vertices[i][0]*vertices[i][2];
+      I_ref[1, 0]-=m*vertices[i][1]*vertices[i][0];
+      I_ref[1, 1]-=m*vertices[i][1]*vertices[i][1];
+      I_ref[1, 2]-=m*vertices[i][1]*vertices[i][2];
+      I_ref[2, 0]-=m*vertices[i][2]*vertices[i][0];
+      I_ref[2, 1]-=m*vertices[i][2]*vertices[i][1];
+      I_ref[2, 2]-=m*vertices[i][2]*vertices[i][2];
+    }
+    I_ref [3, 3] = 1;
+    return I_ref;
+  }
+
+  bool IsPointofCube(Vector3 center, Vector3 p, float l)
+  {
+    return (Mathf.Abs(p.x - center.x) <= l && Mathf.Abs(p.y - center.y) <= l &&
+        Mathf.Abs(p.z - center.z) <= l);
   }
 }
