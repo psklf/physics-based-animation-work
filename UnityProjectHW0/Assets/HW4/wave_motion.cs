@@ -24,27 +24,27 @@ public class wave_motion : MonoBehaviour
 
   Vector3 kGravity    = new Vector3(0, -9.8F, 0);
   float dt            = 0.003F;
-  float mass          = 500.0F;
+  float mass          = 600.0F;
   float m;
-  float angular_decay = 0.8F;
+  float angular_decay = 0.9F;
   Matrix4x4 I_ref = Matrix4x4.identity;
 
   // Get the cross product matrix of vector a
-	Matrix4x4 Get_Cross_Matrix(Vector3 a)
-	{
-		Matrix4x4 A = Matrix4x4.zero;
-		A [0, 0] = 0;
-		A [0, 1] = -a [2];
-		A [0, 2] = a [1];
-		A [1, 0] = a [2];
-		A [1, 1] = 0;
-		A [1, 2] = -a [0];
-		A [2, 0] = -a [1];
-		A [2, 1] = a [0];
-		A [2, 2] = 0;
-		A [3, 3] = 1;
-		return A;
-	}
+  Matrix4x4 Get_Cross_Matrix(Vector3 a)
+  {
+    Matrix4x4 A = Matrix4x4.zero;
+    A [0, 0] = 0;
+    A [0, 1] = -a [2];
+    A [0, 2] = a [1];
+    A [1, 0] = a [2];
+    A [1, 1] = 0;
+    A [1, 2] = -a [0];
+    A [2, 0] = -a [1];
+    A [2, 1] = a [0];
+    A [2, 2] = 0;
+    A [3, 3] = 1;
+    return A;
+  }
 
   Quaternion Quaternion_Add(Quaternion l, Quaternion r)
   {
@@ -276,7 +276,7 @@ public class wave_motion : MonoBehaviour
 
           if (hit_point.y < new_h[i, j])
           {
-             // low_h[i, j] = c1.y - 0.5F;
+            // low_h[i, j] = c1.y - 0.5F;
             low_h[i, j] = hit_point.y;
             cg_mask[i, j] = true;
             b[i, j] = (new_h[i, j] - low_h[i, j]) / rate;
@@ -418,28 +418,38 @@ public class wave_motion : MonoBehaviour
     // cube1
     Quaternion q1 = cube.transform.rotation;
     Matrix4x4 R1 = Matrix4x4.Rotate(q1);
+    Vector3[] vertices_1 = cube.GetComponent<MeshFilter>().mesh.vertices;
 
     Vector3 water_f1 = Vector3.zero;
     Vector3 water_f2 = Vector3.zero;
 
     // cube1
     // Get rotation by impuse
-    Vector3 sum_tao = Vector3.zero;
+    Vector3 sum_tao_1 = Vector3.zero;
     for (int i = 0; i < hit_list_1.Count; ++i)
     {
       Vector3 force = new Vector3(0,
           vh[index_list_1[i][0], index_list_1[i][1]] * 9.8F * 997.0F * area,
           0);
-      // don't why but should give a scale
-      sum_tao += Vector3.Cross(hit_list_1[i], force * 10);
-  //    Debug.Log("hit force" + force);
- //     Debug.Log("point" + hit_list_1[i]);
+      //sum_tao += Vector3.Cross(hit_list_1[i], force * 10);
       water_f1 += force;
     }
- //   Debug.Log("sum tao" + sum_tao.ToString("F4"));
+
+    // find a vertex to apply torque
+    for (int k = 0; k < vertices_1.Length; ++k) {
+      Vector3 world_p = R1.MultiplyPoint3x4(vertices_1[k]) + c1;
+      // calculate index in grid
+      int i =(int)( (world_p.x + 5.0F) / 10.0F * size - 1);
+      int j =(int)( (world_p.z + 5.0F) / 10.0F * size - 1);
+      if (i < 0 || i >= size || j < 0 || j >= size) { continue; }
+      if (new_h[i, j] > world_p.y)
+      {
+        sum_tao_1 += Vector3.Cross(R1.MultiplyPoint3x4(vertices_1[k]), water_f1);
+      }
+    }
     Matrix4x4 I = R1 * I_ref * R1.transpose;
 
-    cube_w[0] += (I.inverse.MultiplyPoint3x4(sum_tao) * dt);
+    cube_w[0] += (I.inverse.MultiplyPoint3x4(sum_tao_1) * dt);
     cube_w[0] *= angular_decay;
 
     cube_v[0] += (kGravity + water_f1 / mass) * dt;
@@ -448,16 +458,32 @@ public class wave_motion : MonoBehaviour
     // cube2
     Quaternion q2 = cube2.transform.rotation;
     Matrix4x4 R2 = Matrix4x4.Rotate(q2);
+    Vector3[] vertices_2 = cube2.GetComponent<MeshFilter>().mesh.vertices;
 
     Vector3 sum_tao_2 = Vector3.zero;
+
+    // get total force
     for (int i = 0; i < hit_list_2.Count; ++i)
     {
       Vector3 force = new Vector3(0,
           vh[index_list_2[i][0], index_list_2[i][1]] * 9.8F * 997.0F * area,
           0);
-      sum_tao_2 += Vector3.Cross(hit_list_2[i], force * 1);
+      //  sum_tao_2 += Vector3.Cross(hit_list_2[i], force * 1);
       water_f2 += force;
     }
+    // find a vertex to apply torque
+    for (int k = 0; k < vertices_2.Length; ++k) {
+      Vector3 world_p = R2.MultiplyPoint3x4(vertices_2[k]) + c2;
+      // calculate index in grid
+      int i =(int)( (world_p.x + 5.0F) / 10.0F * size - 1);
+      int j =(int)( (world_p.z + 5.0F) / 10.0F * size - 1);
+      if (i < 0 || i >= size || j < 0 || j >= size) { continue; }
+      if (new_h[i, j] > world_p.y)
+      {
+        sum_tao_2 += Vector3.Cross(R2.MultiplyPoint3x4(vertices_2[k]), water_f2);
+      }
+    }
+
 
     Matrix4x4 I2 = R2 * I_ref * R2.transpose;
     cube_w[1] += I2.inverse.MultiplyPoint3x4(sum_tao_2) * dt;
