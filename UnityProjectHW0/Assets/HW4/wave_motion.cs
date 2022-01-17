@@ -231,21 +231,34 @@ public class wave_motion : MonoBehaviour
       }
     }
 
+    // Cube related constants
+
+    float cube_size = 0.5F;
+    int cube_step = 9;
+
     // then set up b and cg_mask for conjugate gradient.
     GameObject cube = GameObject.Find("Cube");
     Vector3 c1 = cube.transform.position;
 
+    int li = (int) ((c1.x - 0.5F + 5.0F) * 0.1F * size);
+    int ui = li + cube_step;
+    int lj = (int) ((c1.z - 0.5F + 5.0F) * 0.1F * size);
+    int uj = lj + cube_step;
+
     Collider collider1 = cube.GetComponent<Collider>();
 
-    float cube_size = 0.5F;
-
-    int li = size - 1;
-    int ui = 0;
-    int lj = size - 1;
-    int uj = 0;
     for (int i = 0; i < size; i++)
     {
       for (int j = 0; j < size; j++)
+      {
+        cg_mask[i, j] = false;
+        b[i, j] = 0.0F;
+      }
+    }  // end of water grid loop
+
+    for (int i = li; i <= ui; ++i)
+    {
+      for (int j = lj; j <= uj; ++j)
       {
         // Whether this cube is collide w/ current water grid
         Vector3 cur_p = new Vector3(i * 10.0F / size - 5.0F, new_h[i, j],
@@ -254,30 +267,21 @@ public class wave_motion : MonoBehaviour
         Vector3 ray_s = cur_p;
         ray_s.y -= 1.0F;
         Ray ray = new Ray(ray_s, new Vector3(0, 1, 0));
-        float distance;
 
-        if (Mathf.Abs(cur_p.x - c1.x) < 0.5F && Mathf.Abs(cur_p.z - c1.z) < 0.5F &&
-            Mathf.Abs(cur_p.y - c1.y) < 0.5F)
-        {
-          /*
-          if (collider1.bounds.IntersectRay(ray, out distance))
+        float distance;
+    //    if (collider1.bounds.IntersectRay(ray, out distance))
+    //    {
+    //      Vector3 hit_point = ray_s + new Vector3(0, distance, 0);
+    //      if (hit_point.y < new_h[i, j])
           {
-            Debug.Log("Raycast " + distance);
-          }*/
-          low_h[i, j] = c1.y - 0.5F;
-          cg_mask[i, j] = true;
-          b[i, j] = (new_h[i, j] - low_h[i, j]) / rate;
-          // mark bound
-          if (i < li) { li = i; }
-          if (i > ui) { ui = i; }
-          if (j < lj) { lj = j; }
-          if (j > uj) { uj = j; }
-        }
-        else
-        {
-          cg_mask[i, j] = false;
-          b[i, j] = 0.0F;
-        }
+             low_h[i, j] = c1.y - 0.5F;
+            //Debug.Log("Raycast " + hit_point);
+            //low_h[i, j] = hit_point.y;
+            cg_mask[i, j] = true;
+            b[i, j] = (new_h[i, j] - low_h[i, j]) / rate;
+          }
+    //    }  // end of intersect ray
+
       }
     }
 
@@ -297,12 +301,7 @@ public class wave_motion : MonoBehaviour
     Conjugate_Gradient(cg_mask, b, x1, li, ui, lj, uj);
 
     //TODO: for block 2, calculate low_h.
-
-    li = size - 1;
-    ui = 0;
-    lj = size - 1;
-    uj = 0;
-
+    //
     for (int i = 0; i < size; i++)
     {
       for (int j = 0; j < size; j++)
@@ -315,29 +314,47 @@ public class wave_motion : MonoBehaviour
     //TODO: Solve the Poisson equation to obtain vh (virtual height).
     GameObject cube2 = GameObject.Find("Block");
     Vector3 c2 = cube2.transform.position;
+
+    li = (int) ((c2.x - 0.5F + 5.0F) * 0.1F * size);
+    ui = li + cube_step;
+    lj = (int) ((c2.z - 0.5F + 5.0F) * 0.1F * size);
+    uj = lj + cube_step;
+
+    Collider collider2 = cube2.GetComponent<Collider>();
+
     for (int i = 0; i < size; i++)
     {
       for (int j = 0; j < size; j++)
       {
-        Vector3 cur_p =
-          new Vector3(i * 10.0F / size - 5.0F, new_h[i, j], j * 10.0F / size - 5.0F);
-        if (Mathf.Abs(cur_p.x - c2.x) < 0.5F && Mathf.Abs(cur_p.z - c2.z) < 0.5F &&
-            Mathf.Abs(cur_p.y - c2.y) < 0.5F)
-        {
-          low_h[i, j] = c2.y - 0.5F;
-          cg_mask[i, j] = true;
-          b[i, j] = (new_h[i, j] - low_h[i, j]) / rate;
-          // mark bound
-          if (i < li) { li = i; }
-          if (i > ui) { ui = i; }
-          if (j < lj) { lj = j; }
-          if (j > uj) { uj = j; }
-        }
-        else
-        {
-          cg_mask[i, j] = false;
-          b[i, j] = 0.0F;
-        }
+        cg_mask[i, j] = false;
+        b[i, j] = 0.0F;
+      }
+    }
+
+    for (int i = li; i <= ui; ++i)
+    {
+      for (int j = lj; j <= uj; ++j)
+      {
+        // Whether this cube is collide w/ current water grid
+        Vector3 cur_p = new Vector3(i * 10.0F / size - 5.0F, new_h[i, j],
+            j * 10.0F / size - 5.0F);
+
+        Vector3 ray_s = cur_p;
+        ray_s.y -= 1.0F;
+        Ray ray = new Ray(ray_s, new Vector3(0, 1, 0));
+
+        float distance;
+      //  if (collider2.bounds.IntersectRay(ray, out distance))
+      //  {
+      //    Vector3 hit_point = ray_s + new Vector3(0, distance, 0);
+          //if (hit_point.y < new_h[i, j])
+          //{
+             low_h[i, j] = c2.y - 0.5F;
+            //low_h[i, j] = hit_point.y;
+            cg_mask[i, j] = true;
+            b[i, j] = (new_h[i, j] - low_h[i, j]) / rate;
+          //}
+      //  }  // end of intersect ray
       }
     }
     float[,] x2 = new float[size, size];
