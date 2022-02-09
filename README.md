@@ -17,3 +17,9 @@ Position based Dynamics
 Finite Element Method
 
 ![](docs/lab3-house.webp)
+
+## Lab4
+
+shallow wave
+
+![lab4 pic](docs/lab4-wave.webp)
